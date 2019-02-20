@@ -1,0 +1,47 @@
+from .unet_parts import *
+
+class UNet(nn.Module):
+    def __init__(self, n_channels=150, n_out=1):
+        super(UNet, self).__init__()
+        self.up = generation(n_channels, n_channels)
+        self.inc = inconv(n_channels, 64)
+
+        self.down_seg_1 = down(64, 128)
+        self.down_seg_2 = down(128, 256)
+        self.down_seg_3 = down(256, 512)
+        self.down_seg_4 = down(512, 512)
+        self.up_seg_1 = up(1024, 256)
+        self.up_seg_2 = up(512, 128)
+        self.up_seg_3 = up(256, 64)
+        self.up_seg_4 = up(128, 64)
+        self.out_seg = outconv(64, 64)
+        self.resize = nn.Upsample(size=(94, 84), mode='bilinear')
+
+        # 96x96 -> 46x82
+        self.resize_seg = nn.Sequential(
+            nn.Conv2d(64, 32, kernel_size=[4, 3], stride=[2, 1], padding=[2, 1]),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(32, 1, kernel_size=3, stride=1, padding=0),
+        )
+
+
+    def forward(self, x):
+        x = self.up(x)
+        x1 = self.inc(x)
+
+        y1 = self.down_seg_1(x1)
+        y2 = self.down_seg_2(y1)
+        y3 = self.down_seg_3(y2)
+        y4 = self.down_seg_4(y3)
+        y = self.up_seg_1(y4, y3)
+        y = self.up_seg_2(y, y2)
+        y = self.up_seg_3(y, y1)
+        y = self.up_seg_4(y, x1)
+        y = self.out_seg(y)
+        y = self.resize(y)
+        y = self.resize_seg(y)
+
+        return y
+
